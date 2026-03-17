@@ -59,33 +59,32 @@ local function setup_highlights(cfg)
   set("GhPrCommentLinePending", hl.comment_line_pending)
 end
 
-function M.update_winbar(bufnr)
+local viewed_ns = vim.api.nvim_create_namespace("gh_pr_viewed")
+
+function M.update_viewed_indicator(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
   local api = require("gh-review.api")
+  vim.api.nvim_buf_clear_namespace(bufnr, viewed_ns, 0, -1)
+
   local rel_path = api.buf_relative_path(bufnr)
   if not rel_path then return end
   local file = api.get_file_info(rel_path)
   if not file then return end
 
   local viewed = file.viewerViewedState == "VIEWED"
-  local icon = viewed and "✓" or "○"
+  local icon = viewed and " ✓ Viewed" or " ○ Unviewed"
   local hl = viewed and "GhPrApproved" or "GhPrReviewWait"
-  local winbar = string.format("%%#%s#%s PR: %s%%*", hl, icon, rel_path)
 
-  for _, win in ipairs(vim.api.nvim_list_wins()) do
-    if vim.api.nvim_win_get_buf(win) == bufnr then
-      pcall(vim.api.nvim_set_option_value, "winbar", winbar, { win = win })
-    end
-  end
+  pcall(vim.api.nvim_buf_set_extmark, bufnr, viewed_ns, 0, 0, {
+    virt_text = { { icon, hl } },
+    virt_text_pos = "right_align",
+    priority = 200,
+  })
 end
 
-function M.clear_winbar(bufnr)
+function M.clear_viewed_indicator(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  for _, win in ipairs(vim.api.nvim_list_wins()) do
-    if vim.api.nvim_win_get_buf(win) == bufnr then
-      pcall(vim.api.nvim_set_option_value, "winbar", "", { win = win })
-    end
-  end
+  vim.api.nvim_buf_clear_namespace(bufnr, viewed_ns, 0, -1)
 end
 
 function M.statusline()
@@ -118,11 +117,11 @@ function M.setup(opts)
     display.toggle(nil, function(visible)
       if visible then
         for _, win in ipairs(vim.api.nvim_list_wins()) do
-          M.update_winbar(vim.api.nvim_win_get_buf(win))
+          M.update_viewed_indicator(vim.api.nvim_win_get_buf(win))
         end
       else
         for _, win in ipairs(vim.api.nvim_list_wins()) do
-          M.clear_winbar(vim.api.nvim_win_get_buf(win))
+          M.clear_viewed_indicator(vim.api.nvim_win_get_buf(win))
         end
       end
     end)
@@ -288,7 +287,7 @@ function M.setup(opts)
       end
       local new_state = is_viewed and "unviewed" or "viewed"
       vim.notify("File marked as " .. new_state, vim.log.levels.INFO)
-      M.update_winbar(bufnr)
+      M.update_viewed_indicator(bufnr)
     end)
   end, {})
 
@@ -301,7 +300,7 @@ function M.setup(opts)
     api.invalidate()
     api.discard_pending()
     for _, win in ipairs(vim.api.nvim_list_wins()) do
-      M.clear_winbar(vim.api.nvim_win_get_buf(win))
+      M.clear_viewed_indicator(vim.api.nvim_win_get_buf(win))
     end
     vim.notify("PR comments cleared", vim.log.levels.INFO)
   end, {})
@@ -356,7 +355,7 @@ function M.setup(opts)
     callback = function(ev)
       display.render_pending(ev.buf)
       if display.is_visible() then
-        M.update_winbar(ev.buf)
+        M.update_viewed_indicator(ev.buf)
         diff.fetch_and_render(ev.buf, function()
           display.render(ev.buf)
         end)
