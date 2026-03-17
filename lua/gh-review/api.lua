@@ -231,6 +231,11 @@ function M._fetch_threads_graphql(owner, repo, pr, callback)
       for _, thread in ipairs(M.state.threads) do
         if type(thread.line) ~= "number" then thread.line = nil end
         if type(thread.startLine) ~= "number" then thread.startLine = nil end
+        local comments = type(thread.comments) == "table" and thread.comments.nodes or {}
+        for _, comment in ipairs(comments) do
+          if type(comment.author) ~= "table" then comment.author = nil end
+          if type(comment.reactions) ~= "table" then comment.reactions = nil end
+        end
       end
 
       M.state.threads_by_file = {}
