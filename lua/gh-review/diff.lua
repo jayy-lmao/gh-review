@@ -7,13 +7,6 @@ M.state = {
   hunks_by_file = {},
 }
 
-local function setup_highlights()
-  vim.api.nvim_set_hl(0, "GhPrDiffAdd", { bg = "#1a3a1a", default = true })
-  vim.api.nvim_set_hl(0, "GhPrDiffAddSign", { fg = "#4ae04a", default = true })
-  vim.api.nvim_set_hl(0, "GhPrDiffDelete", { fg = "#a06060", bg = "#2a1515", default = true })
-  vim.api.nvim_set_hl(0, "GhPrDiffDeleteSign", { fg = "#a06060", default = true })
-end
-
 function M.parse_unified_diff(diff_lines)
   local hunks = {}
   local current_hunk = nil
@@ -81,7 +74,6 @@ end
 
 function M.render(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  setup_highlights()
 
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 

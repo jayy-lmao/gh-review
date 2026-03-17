@@ -1,5 +1,18 @@
 local M = {}
 
+M.REACTION_EMOJI = {
+  THUMBS_UP = "👍",
+  THUMBS_DOWN = "👎",
+  LAUGH = "😄",
+  CONFUSED = "😕",
+  HEART = "❤️",
+  HOORAY = "🎉",
+  ROCKET = "🚀",
+  EYES = "👀",
+}
+
+M.REACTION_ORDER = { "THUMBS_UP", "THUMBS_DOWN", "LAUGH", "HOORAY", "CONFUSED", "HEART", "ROCKET", "EYES" }
+
 M.state = {
   pr_number = nil,
   pr_id = nil,
@@ -13,6 +26,7 @@ M.state = {
   base_branch = nil,
   viewer_login = nil,
   repo_prs = nil,
+  pending_comments = {},
 }
 
 function M.get_repo_root()
@@ -172,6 +186,12 @@ function M._fetch_threads_graphql(owner, repo, pr, callback)
                   author { login }
                   createdAt
                   url
+                  reactions(first: 20) {
+                    nodes {
+                      content
+                      user { login }
+                    }
+                  }
                 }
               }
             }
@@ -417,11 +437,13 @@ function M.fetch_repo_prs(callback)
       if callback then callback(nil, "Could not detect GitHub user") end
       return
     end
+    local config = require("gh-review.config")
+    local limit = tostring(config.get().pr_list.limit)
     local fields = "number,title,body,url,isDraft,createdAt,updatedAt,author,headRefName,reviewDecision,additions,deletions,statusCheckRollup,reviews"
     vim.fn.jobstart({
       "gh", "pr", "list",
       "--state", "open",
-      "--limit", "50",
+      "--limit", limit,
       "--json", fields,
     }, {
       stdout_buffered = true,
@@ -458,6 +480,116 @@ function M.fetch_repo_prs(callback)
       end,
     })
   end)
+end
+
+function M.add_pending_comment(path, line, start_line, body)
+  table.insert(M.state.pending_comments, {
+    path = path,
+    line = line,
+    start_line = start_line,
+    body = body,
+  })
+end
+
+function M.pending_count()
+  return #M.state.pending_comments
+end
+
+function M.discard_pending()
+  M.state.pending_comments = {}
+end
+
+function M.submit_review(event, body, callback)
+  local owner, repo = M.get_repo_info()
+  local pr = M.get_pr_number()
+  if not owner or not pr then
+    if callback then callback(false, "Missing PR info") end
+    return
+  end
+
+  local comments = {}
+  for _, c in ipairs(M.state.pending_comments) do
+    local comment = {
+      path = c.path,
+      line = c.line,
+      side = "RIGHT",
+      body = c.body,
+    }
+    if c.start_line then
+      comment.start_line = c.start_line
+      comment.start_side = "RIGHT"
+    end
+    table.insert(comments, comment)
+  end
+
+  local payload = { event = event }
+  if body and body ~= "" then
+    payload.body = body
+  end
+  if #comments > 0 then
+    payload.comments = comments
+  end
+
+  local json_str = vim.json.encode(payload)
+  local endpoint = string.format("repos/%s/%s/pulls/%d/reviews", owner, repo, pr)
+
+  local job_id = vim.fn.jobstart({ "gh", "api", endpoint, "--input", "-" }, {
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_exit = function(_, exit_code)
+      vim.schedule(function()
+        if exit_code == 0 then
+          M.state.pending_comments = {}
+          if callback then callback(true) end
+        else
+          if callback then callback(false, "API request failed") end
+        end
+      end)
+    end,
+  })
+  vim.fn.chansend(job_id, json_str)
+  vim.fn.chanclose(job_id, "stdin")
+end
+
+function M.toggle_reaction(comment_id, content, has_reacted, callback)
+  local mutation
+  if has_reacted then
+    mutation = "mutation($id: ID!, $content: ReactionContent!) { removeReaction(input: {subjectId: $id, content: $content}) { reaction { content } } }"
+  else
+    mutation = "mutation($id: ID!, $content: ReactionContent!) { addReaction(input: {subjectId: $id, content: $content}) { reaction { content } } }"
+  end
+
+  vim.fn.jobstart({
+    "gh", "api", "graphql",
+    "-f", "query=" .. mutation,
+    "-f", "id=" .. comment_id,
+    "-f", "content=" .. content,
+  }, {
+    stdout_buffered = true,
+    on_exit = function(_, exit_code)
+      vim.schedule(function()
+        if callback then callback(exit_code == 0) end
+      end)
+    end,
+  })
+end
+
+function M.merge_pr(method, callback)
+  local pr = M.get_pr_number()
+  if not pr then
+    if callback then callback(false, "Not on a PR branch") end
+    return
+  end
+
+  vim.fn.jobstart({ "gh", "pr", "merge", tostring(pr), "--" .. method }, {
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_exit = function(_, exit_code)
+      vim.schedule(function()
+        if callback then callback(exit_code == 0) end
+      end)
+    end,
+  })
 end
 
 return M

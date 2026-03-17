@@ -10,6 +10,10 @@ A Neovim plugin for reviewing GitHub pull requests without leaving your editor. 
 - **File Review** — Browse changed files with viewed/unviewed status, toggle with a keypress
 - **Thread Actions** — View, reply to, resolve/unresolve comment threads from floating windows
 - **PR Checkout** — Check out any PR branch directly from the picker
+- **Reactions** — View emoji reactions on comments and toggle your own (👍 👎 😄 🎉 😕 ❤️ 🚀 👀)
+- **Review Submission** — Batch comments into a pending review, then submit as Approve / Request Changes / Comment
+- **Multi-line Comments** — Select a visual range to comment on multiple lines at once
+- **Merge PR** — Merge, squash, or rebase directly from Neovim
 
 ## Requirements
 
@@ -53,14 +57,42 @@ A Neovim plugin for reviewing GitHub pull requests without leaving your editor. 
 | `:GhPrFiles` | Browse changed files in the current PR |
 | `:GhPrToggle` | Toggle inline comment + diff overlays |
 | `:GhPrRefresh` | Re-fetch PR data and re-render |
-| `:GhPrAddComment` | Add a new review comment on current line |
+| `:GhPrAddComment` | Add a pending review comment on current line (or visual selection) |
 | `:GhPrViewThread` | View the comment thread on current line |
 | `:GhPrReply` | Reply to the thread on current line |
 | `:GhPrNextComment` | Jump to next comment in file |
 | `:GhPrPrevComment` | Jump to previous comment in file |
+| `:GhPrReact` | React to the comment thread on current line |
+| `:GhPrSubmitReview [approve\|comment\|request_changes]` | Submit pending review (prompts for type if omitted) |
+| `:GhPrMerge` | Merge the current PR (merge / squash / rebase) |
+| `:GhPrPending` | Show count of pending review comments |
+| `:GhPrDiscardReview` | Discard all pending review comments |
 | `:GhPrClear` | Clear all overlays and cached state |
 
 ## Keymaps
+
+Default keymaps are enabled on setup. Disable with `keymaps = false` in config.
+
+### Default Keymaps
+
+| Key | Mode | Action |
+|---|---|---|
+| `<leader>gl` | n | PR list |
+| `<leader>gf` | n | Changed files |
+| `<leader>gc` | n | PR comments |
+| `<leader>gt` | n | Toggle PR overlays |
+| `<leader>gx` | n | Clear PR overlays |
+| `<leader>ga` | n | Add review comment on line |
+| `<leader>ga` | v | Add review comment on selection |
+| `<leader>gv` | n | View thread |
+| `<leader>gr` | n | Reply to thread |
+| `]g` | n | Next PR comment |
+| `[g` | n | Prev PR comment |
+| `<leader>ge` | n | React to comment |
+| `<leader>gs` | n | Submit review |
+| `<leader>gd` | n | Discard pending review |
+| `<leader>gp` | n | Pending comment count |
+| `<leader>gm` | n | Merge PR |
 
 ### PR List Picker (`:GhPrList`)
 
@@ -84,6 +116,7 @@ A Neovim plugin for reviewing GitHub pull requests without leaving your editor. 
 | `q` | Close |
 | `r` | Reply to thread |
 | `R` | Resolve/unresolve thread |
+| `e` | React to a comment |
 
 ### Reply / Add Comment
 
@@ -99,19 +132,26 @@ lvim.builtin.which_key.mappings["G"] = {
   name = "+GitHub PR",
   a = { "<cmd>GhPrAddComment<cr>", "Add comment on line" },
   c = { "<cmd>GhPrComments<cr>", "List all comments" },
+  d = { "<cmd>GhPrDiscardReview<cr>", "Discard pending review" },
   f = { "<cmd>GhPrFiles<cr>", "List changed files" },
   l = { "<cmd>GhPrList<cr>", "List open PRs" },
+  M = { "<cmd>GhPrMerge<cr>", "Merge PR" },
   m = { "<cmd>GhPrList mine<cr>", "List my PRs" },
   n = { "<cmd>GhPrNextComment<cr>", "Next comment" },
   o = { "<cmd>GhPrList others<cr>", "List others' PRs" },
   p = { "<cmd>GhPrPrevComment<cr>", "Prev comment" },
+  P = { "<cmd>GhPrPending<cr>", "Show pending count" },
   r = { "<cmd>GhPrReply<cr>", "Reply to thread on line" },
+  R = { "<cmd>GhPrSubmitReview<cr>", "Submit review" },
   s = { "<cmd>GhPrComments resolved<cr>", "List resolved comments" },
   t = { "<cmd>GhPrToggle<cr>", "Toggle PR comments" },
   u = { "<cmd>GhPrComments unresolved<cr>", "List unresolved comments" },
   v = { "<cmd>GhPrViewThread<cr>", "View thread on line" },
   x = { "<cmd>GhPrClear<cr>", "Clear PR comments" },
 }
+
+-- Visual mode: comment on selected range
+vim.keymap.set("v", "<leader>Ga", ":GhPrAddComment<cr>", { desc = "Add comment on selection" })
 
 vim.keymap.set("n", "]g", "<cmd>GhPrNextComment<cr>")
 vim.keymap.set("n", "[g", "<cmd>GhPrPrevComment<cr>")

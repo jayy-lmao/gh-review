@@ -52,12 +52,20 @@ M.defaults = {
     diff_add_sign = { fg = "#4ae04a" },
     diff_delete = { fg = "#a06060", bg = "#2a1515" },
     diff_delete_sign = { fg = "#a06060" },
+
+    -- Pending review comment overlays
+    comment_pending = { link = "DiagnosticVirtualTextInfo" },
+    comment_sign_pending = { link = "DiagnosticSignWarn" },
+    comment_line_pending = { bg = "#2a2a2a" },
   },
 
   -- PR list settings
   pr_list = {
     limit = 50,
   },
+
+  -- Default keymaps (set to false to disable all)
+  keymaps = true,
 }
 
 M.values = {}

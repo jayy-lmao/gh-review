@@ -51,6 +51,9 @@ local function setup_highlights(cfg)
   vim.api.nvim_set_hl(0, "GhPrDiffAddSign", vim.tbl_extend("force", hl.diff_add_sign, { default = true }))
   vim.api.nvim_set_hl(0, "GhPrDiffDelete", vim.tbl_extend("force", hl.diff_delete, { default = true }))
   vim.api.nvim_set_hl(0, "GhPrDiffDeleteSign", vim.tbl_extend("force", hl.diff_delete_sign, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentPending", vim.tbl_extend("force", hl.comment_pending, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentSignPending", vim.tbl_extend("force", hl.comment_sign_pending, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentLinePending", vim.tbl_extend("force", hl.comment_line_pending, { default = true }))
 end
 
 function M.setup(opts)
@@ -119,9 +122,9 @@ function M.setup(opts)
     complete = function() return { "mine", "others" } end,
   })
 
-  vim.api.nvim_create_user_command("GhPrAddComment", function()
-    ui.add_comment()
-  end, {})
+  vim.api.nvim_create_user_command("GhPrAddComment", function(cmd_opts)
+    ui.add_comment(cmd_opts.line1, cmd_opts.line2)
+  end, { range = true })
 
   vim.api.nvim_create_user_command("GhPrViewThread", function()
     local bufnr = vim.api.nvim_get_current_buf()
@@ -173,18 +176,93 @@ function M.setup(opts)
     vim.api.nvim_win_set_cursor(0, { target, 0 })
   end, {})
 
+  vim.api.nvim_create_user_command("GhPrReact", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local line = vim.api.nvim_win_get_cursor(0)[1]
+    local thread = display.get_thread_at_line(bufnr, line)
+    ui.react_to_thread(thread)
+  end, {})
+
+  vim.api.nvim_create_user_command("GhPrSubmitReview", function(cmd_opts)
+    local arg = cmd_opts.args ~= "" and cmd_opts.args or nil
+    ui.submit_review(arg)
+  end, {
+    nargs = "?",
+    complete = function() return { "approve", "comment", "request_changes" } end,
+  })
+
+  vim.api.nvim_create_user_command("GhPrMerge", function()
+    ui.merge_pr()
+  end, {})
+
+  vim.api.nvim_create_user_command("GhPrPending", function()
+    local count = api.pending_count()
+    if count == 0 then
+      vim.notify("No pending review comments", vim.log.levels.INFO)
+    else
+      vim.notify(string.format("%d pending review comment(s)", count), vim.log.levels.INFO)
+    end
+  end, {})
+
+  vim.api.nvim_create_user_command("GhPrDiscardReview", function()
+    local count = api.pending_count()
+    if count == 0 then
+      vim.notify("No pending comments to discard", vim.log.levels.INFO)
+      return
+    end
+    api.discard_pending()
+    display.clear_pending_all_visible()
+    vim.notify(string.format("Discarded %d pending comment(s)", count), vim.log.levels.INFO)
+  end, {})
+
   vim.api.nvim_create_user_command("GhPrClear", function()
     display.visible = false
     display.clear_all_visible()
+    display.clear_pending_all_visible()
     diff.clear_all_visible()
     diff.invalidate()
     api.invalidate()
+    api.discard_pending()
     vim.notify("PR comments cleared", vim.log.levels.INFO)
   end, {})
+
+  if cfg.keymaps then
+    local map = vim.keymap.set
+    local o = { silent = true }
+
+    -- PR browsing
+    map("n", "<leader>gl", "<cmd>GhPrList<cr>", vim.tbl_extend("force", o, { desc = "PR list" }))
+    map("n", "<leader>gf", "<cmd>GhPrFiles<cr>", vim.tbl_extend("force", o, { desc = "PR changed files" }))
+    map("n", "<leader>gc", "<cmd>GhPrComments<cr>", vim.tbl_extend("force", o, { desc = "PR comments" }))
+
+    -- Toggle / refresh
+    map("n", "<leader>gt", "<cmd>GhPrToggle<cr>", vim.tbl_extend("force", o, { desc = "Toggle PR overlays" }))
+    map("n", "<leader>gx", "<cmd>GhPrClear<cr>", vim.tbl_extend("force", o, { desc = "Clear PR overlays" }))
+
+    -- Comments & threads
+    map("n", "<leader>ga", "<cmd>GhPrAddComment<cr>", vim.tbl_extend("force", o, { desc = "Add review comment" }))
+    map("v", "<leader>ga", ":GhPrAddComment<cr>", vim.tbl_extend("force", o, { desc = "Add review comment on selection" }))
+    map("n", "<leader>gv", "<cmd>GhPrViewThread<cr>", vim.tbl_extend("force", o, { desc = "View thread" }))
+    map("n", "<leader>gr", "<cmd>GhPrReply<cr>", vim.tbl_extend("force", o, { desc = "Reply to thread" }))
+    map("n", "]g", "<cmd>GhPrNextComment<cr>", vim.tbl_extend("force", o, { desc = "Next PR comment" }))
+    map("n", "[g", "<cmd>GhPrPrevComment<cr>", vim.tbl_extend("force", o, { desc = "Prev PR comment" }))
+
+    -- Reactions
+    map("n", "<leader>ge", "<cmd>GhPrReact<cr>", vim.tbl_extend("force", o, { desc = "React to comment" }))
+
+    -- Review workflow
+    map("n", "<leader>gs", "<cmd>GhPrSubmitReview<cr>", vim.tbl_extend("force", o, { desc = "Submit review" }))
+    map("n", "<leader>gd", "<cmd>GhPrDiscardReview<cr>", vim.tbl_extend("force", o, { desc = "Discard pending review" }))
+    map("n", "<leader>gp", "<cmd>GhPrPending<cr>", vim.tbl_extend("force", o, { desc = "Pending comment count" }))
+
+    -- Merge
+    map("n", "<leader>gm", "<cmd>GhPrMerge<cr>", vim.tbl_extend("force", o, { desc = "Merge PR" }))
+  end
 
   vim.api.nvim_create_autocmd("BufEnter", {
     group = vim.api.nvim_create_augroup("GhReview", { clear = true }),
     callback = function(ev)
+      display.render_pending(ev.buf)
       if display.is_visible() then
         diff.fetch_and_render(ev.buf, function()
           display.render(ev.buf)

@@ -3,21 +3,12 @@ local M = {}
 local api = require("gh-review.api")
 local diff = require("gh-review.diff")
 local ns = vim.api.nvim_create_namespace("gh_pr_comments")
+local pending_ns = vim.api.nvim_create_namespace("gh_pr_pending")
 
 M.visible = false
 
-local function setup_highlights()
-  vim.api.nvim_set_hl(0, "GhPrCommentVirtText", { link = "DiagnosticVirtualTextWarn", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCommentResolved", { link = "DiagnosticVirtualTextHint", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCommentSign", { link = "DiagnosticSignInfo", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCommentSignResolved", { link = "DiagnosticSignHint", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCommentLine", { bg = "#2a2a1a", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCommentLineResolved", { bg = "#1a2a2a", default = true })
-end
-
 function M.render(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  setup_highlights()
 
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 
@@ -53,6 +44,23 @@ function M.render(bufnr)
           end
           if #body_lines == 0 then
             table.insert(virt_lines, { { string.format("  ┊ @%s: (empty)", author), hl } })
+          end
+
+          local reactions = comment.reactions and comment.reactions.nodes or {}
+          if #reactions > 0 then
+            local counts = {}
+            for _, r in ipairs(reactions) do
+              counts[r.content] = (counts[r.content] or 0) + 1
+            end
+            local parts = {}
+            for _, key in ipairs(api.REACTION_ORDER) do
+              if counts[key] then
+                table.insert(parts, (api.REACTION_EMOJI[key] or key) .. counts[key])
+              end
+            end
+            if #parts > 0 then
+              table.insert(virt_lines, { { "  ┊   " .. table.concat(parts, " "), hl } })
+            end
           end
         end
 
@@ -126,6 +134,60 @@ end
 
 function M.is_visible()
   return M.visible
+end
+
+function M.render_pending(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_clear_namespace(bufnr, pending_ns, 0, -1)
+
+  local rel_path = api.buf_relative_path(bufnr)
+  if not rel_path then return end
+
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+
+  for _, comment in ipairs(api.state.pending_comments) do
+    if comment.path == rel_path and comment.line and comment.line > 0 and comment.line <= line_count then
+      local body_lines = vim.split(comment.body, "\n", { trimempty = true })
+      local virt_lines = {}
+      for i, body_line in ipairs(body_lines) do
+        local prefix = i == 1 and "  ┊ [pending] " or "  ┊   "
+        table.insert(virt_lines, { { prefix .. body_line, "GhPrCommentPending" } })
+      end
+
+      local start_line = comment.start_line or comment.line
+      for l = start_line, comment.line - 1 do
+        if l > 0 and l <= line_count then
+          pcall(vim.api.nvim_buf_set_extmark, bufnr, pending_ns, l - 1, 0, {
+            line_hl_group = "GhPrCommentLinePending",
+          })
+        end
+      end
+
+      pcall(vim.api.nvim_buf_set_extmark, bufnr, pending_ns, comment.line - 1, 0, {
+        virt_lines = virt_lines,
+        line_hl_group = "GhPrCommentLinePending",
+        sign_text = "◌",
+        sign_hl_group = "GhPrCommentSignPending",
+      })
+    end
+  end
+end
+
+function M.clear_pending(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_clear_namespace(bufnr, pending_ns, 0, -1)
+end
+
+function M.clear_pending_all_visible()
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    M.clear_pending(vim.api.nvim_win_get_buf(win))
+  end
+end
+
+function M.render_pending_all_visible()
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    M.render_pending(vim.api.nvim_win_get_buf(win))
+  end
 end
 
 function M.get_thread_at_line(bufnr, line)

@@ -3,6 +3,8 @@ local M = {}
 function M.list_comments(opts)
   opts = opts or {}
   local api = require("gh-review.api")
+  local config = require("gh-review.config")
+  local cfg = config.get()
   local pickers = require("telescope.pickers")
   local finders = require("telescope.finders")
   local conf = require("telescope.config").values
@@ -42,12 +44,8 @@ function M.list_comments(opts)
 
   pickers.new(opts, {
     prompt_title = "PR Comments" .. (filter and (" [" .. filter .. "]") or ""),
-    layout_strategy = "vertical",
-    layout_config = {
-      width = 0.9,
-      height = 0.9,
-      preview_height = 0.65,
-    },
+    layout_strategy = cfg.layout.strategy,
+    layout_config = cfg.layout.config,
     finder = finders.new_table({
       results = filtered,
       entry_maker = function(thread)
@@ -60,15 +58,16 @@ function M.list_comments(opts)
         end
         local status = thread.isResolved and "+" or "x"
         local replies = #comments > 1 and string.format(" [+%d]", #comments - 1) or ""
+        local line = (type(thread.line) == "number") and thread.line or 0
         local display_str = string.format("[%s] %s:%d @%s: %s%s",
-          status, thread.path or "?", thread.line or 0, author, body_preview, replies)
+          status, thread.path or "?", line, author, body_preview, replies)
 
         return {
           value = thread,
           display = display_str,
           ordinal = display_str,
           filename = thread.path,
-          lnum = thread.line or 1,
+          lnum = line > 0 and line or 1,
         }
       end,
     }),
@@ -188,6 +187,8 @@ end
 function M.list_files(opts)
   opts = opts or {}
   local api = require("gh-review.api")
+  local config = require("gh-review.config")
+  local cfg = config.get()
   local pickers = require("telescope.pickers")
   local finders = require("telescope.finders")
   local conf = require("telescope.config").values
@@ -225,12 +226,8 @@ function M.list_files(opts)
 
   pickers.new(opts, {
     prompt_title = "PR Changed Files",
-    layout_strategy = "vertical",
-    layout_config = {
-      width = 0.9,
-      height = 0.9,
-      preview_height = 0.65,
-    },
+    layout_strategy = cfg.layout.strategy,
+    layout_config = cfg.layout.config,
     finder = finders.new_table({
       results = sorted,
       entry_maker = function(file)
@@ -309,6 +306,9 @@ end
 function M.list_prs(opts)
   opts = opts or {}
   local api = require("gh-review.api")
+  local config = require("gh-review.config")
+  local cfg = config.get()
+  local icons = cfg.icons
   local pickers = require("telescope.pickers")
   local finders = require("telescope.finders")
   local conf = require("telescope.config").values
@@ -329,20 +329,6 @@ function M.list_prs(opts)
     return
   end
 
-  -- Highlight groups (GitHub dark theme colors, matching gh-dash)
-  vim.api.nvim_set_hl(0, "GhPrOpen", { fg = "#3fb950", default = true })
-  vim.api.nvim_set_hl(0, "GhPrDraft", { fg = "#768390", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCiPass", { fg = "#3fb950", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCiFail", { fg = "#f85149", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCiPending", { fg = "#d29922", default = true })
-  vim.api.nvim_set_hl(0, "GhPrCiNone", { fg = "#768390", default = true })
-  vim.api.nvim_set_hl(0, "GhPrApproved", { fg = "#3fb950", default = true })
-  vim.api.nvim_set_hl(0, "GhPrChangesRequested", { fg = "#f85149", default = true })
-  vim.api.nvim_set_hl(0, "GhPrReviewWait", { fg = "#d29922", default = true })
-  vim.api.nvim_set_hl(0, "GhPrNumber", { fg = "#768390", default = true })
-  vim.api.nvim_set_hl(0, "GhPrAuthor", { fg = "#768390", default = true })
-  vim.api.nvim_set_hl(0, "GhPrTime", { fg = "#768390", default = true })
-
   local viewer = api.state.viewer_login
   local filter = opts.filter
 
@@ -361,10 +347,9 @@ function M.list_prs(opts)
     return
   end
 
-  -- Icons from gh-dash (Nerd Fonts)
   local function format_ci(pr)
     local checks = pr.statusCheckRollup or {}
-    if type(checks) ~= "table" or #checks == 0 then return " ", "GhPrCiNone" end
+    if type(checks) ~= "table" or #checks == 0 then return icons.ci_none, "GhPrCiNone" end
     local has_fail = false
     local has_pending = false
     for _, c in ipairs(checks) do
@@ -377,22 +362,22 @@ function M.list_prs(opts)
         has_pending = true
       end
     end
-    if has_fail then return "󰅙", "GhPrCiFail" end       -- nf-md-close_circle
-    if has_pending then return "", "GhPrCiPending" end  -- nf-oct-dot_fill
-    return "", "GhPrCiPass"                             -- nf-md-check_all
+    if has_fail then return icons.ci_fail, "GhPrCiFail" end
+    if has_pending then return icons.ci_pending, "GhPrCiPending" end
+    return icons.ci_pass, "GhPrCiPass"
   end
 
   local function format_review(pr)
     local decision = pr.reviewDecision
-    if not decision or decision == "" then return "", "GhPrReviewWait" end         -- nf-oct-dot_fill
-    if decision == "APPROVED" then return "󰄬", "GhPrApproved" end                  -- nf-md-check
-    if decision == "CHANGES_REQUESTED" then return "", "GhPrChangesRequested" end -- nf-cod-request_changes
-    return "", "GhPrReviewWait"
+    if not decision or decision == "" then return icons.review_wait, "GhPrReviewWait" end
+    if decision == "APPROVED" then return icons.approved, "GhPrApproved" end
+    if decision == "CHANGES_REQUESTED" then return icons.changes_requested, "GhPrChangesRequested" end
+    return icons.review_wait, "GhPrReviewWait"
   end
 
   local function format_state(pr)
-    if pr.isDraft then return "", "GhPrDraft" end -- nf-oct-git_pull_request_draft
-    return "", "GhPrOpen"                         -- nf-oct-git_pull_request
+    if pr.isDraft then return icons.draft, "GhPrDraft" end
+    return icons.open, "GhPrOpen"
   end
 
   local function time_ago(iso_str)
@@ -428,8 +413,8 @@ function M.list_prs(opts)
 
   pickers.new(opts, {
     prompt_title = "Open PRs" .. (filter and (" [" .. filter .. "]") or ""),
-    layout_strategy = "vertical",
-    layout_config = { width = 0.9, height = 0.9, preview_height = 0.5 },
+    layout_strategy = cfg.layout.strategy,
+    layout_config = cfg.layout.config,
     finder = finders.new_table({
       results = filtered,
       entry_maker = function(pr)
@@ -485,7 +470,12 @@ function M.list_prs(opts)
                 vim.notify("Failed to checkout PR #" .. pr.number, vim.log.levels.ERROR)
                 return
               end
+              local pending = api.pending_count()
+              if pending > 0 then
+                vim.notify(string.format("Discarded %d pending comment(s) from previous PR", pending), vim.log.levels.WARN)
+              end
               api.invalidate()
+              api.discard_pending()
               api.state.pr_number = pr.number
               vim.notify(string.format("Switched to PR #%d: %s", pr.number, pr.title or ""), vim.log.levels.INFO)
             end)
