@@ -259,8 +259,17 @@ function M.setup(opts)
     map("n", "<leader>gm", "<cmd>GhPrMerge<cr>", vim.tbl_extend("force", o, { desc = "Merge PR" }))
   end
 
+  local augroup = vim.api.nvim_create_augroup("GhReview", { clear = true })
+
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = augroup,
+    callback = function()
+      setup_highlights(config.get())
+    end,
+  })
+
   vim.api.nvim_create_autocmd("BufEnter", {
-    group = vim.api.nvim_create_augroup("GhReview", { clear = true }),
+    group = augroup,
     callback = function(ev)
       display.render_pending(ev.buf)
       if display.is_visible() then
