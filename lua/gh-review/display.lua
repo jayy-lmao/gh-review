@@ -110,12 +110,13 @@ function M.render_all_visible()
   end
 end
 
-function M.toggle(bufnr)
+function M.toggle(bufnr, on_done)
   if M.visible then
     M.visible = false
     M.clear_all_visible()
     diff.clear_all_visible()
     vim.notify("PR comments hidden", vim.log.levels.INFO)
+    if on_done then on_done(false) end
   else
     vim.notify("Fetching PR comments & diff...", vim.log.levels.INFO)
     api.fetch_threads(function(threads, err)
@@ -127,6 +128,7 @@ function M.toggle(bufnr)
       diff.fetch_and_render_all_visible(function()
         vim.notify(string.format("Loaded %d comment threads", #(threads or {})), vim.log.levels.INFO)
         M.render_all_visible()
+        if on_done then on_done(true) end
       end)
     end)
   end

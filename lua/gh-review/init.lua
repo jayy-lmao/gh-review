@@ -59,6 +59,45 @@ local function setup_highlights(cfg)
   set("GhPrCommentLinePending", hl.comment_line_pending)
 end
 
+function M.update_winbar(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  local api = require("gh-review.api")
+  local rel_path = api.buf_relative_path(bufnr)
+  if not rel_path then return end
+  local file = api.get_file_info(rel_path)
+  if not file then return end
+
+  local viewed = file.viewerViewedState == "VIEWED"
+  local icon = viewed and "✓" or "○"
+  local hl = viewed and "GhPrApproved" or "GhPrReviewWait"
+  local winbar = string.format("%%#%s#%s PR: %s%%*", hl, icon, rel_path)
+
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == bufnr then
+      pcall(vim.api.nvim_set_option_value, "winbar", winbar, { win = win })
+    end
+  end
+end
+
+function M.clear_winbar(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == bufnr then
+      pcall(vim.api.nvim_set_option_value, "winbar", "", { win = win })
+    end
+  end
+end
+
+function M.statusline()
+  local api = require("gh-review.api")
+  local rel_path = api.buf_relative_path(0)
+  if not rel_path then return "" end
+  local file = api.get_file_info(rel_path)
+  if not file then return "" end
+  local viewed = file.viewerViewedState == "VIEWED"
+  return viewed and "✓ Viewed" or "○ Unviewed"
+end
+
 function M.setup(opts)
   if not check_deps() then return end
 
@@ -76,7 +115,17 @@ function M.setup(opts)
   local telescope = require("gh-review.telescope")
 
   vim.api.nvim_create_user_command("GhPrToggle", function()
-    display.toggle()
+    display.toggle(nil, function(visible)
+      if visible then
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          M.update_winbar(vim.api.nvim_win_get_buf(win))
+        end
+      else
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          M.clear_winbar(vim.api.nvim_win_get_buf(win))
+        end
+      end
+    end)
   end, {})
 
   vim.api.nvim_create_user_command("GhPrRefresh", function()
@@ -218,6 +267,31 @@ function M.setup(opts)
     vim.notify(string.format("Discarded %d pending comment(s)", count), vim.log.levels.INFO)
   end, {})
 
+  vim.api.nvim_create_user_command("GhPrToggleViewed", function()
+    local bufnr = vim.api.nvim_get_current_buf()
+    local rel_path = api.buf_relative_path(bufnr)
+    if not rel_path then
+      vim.notify("Not in a tracked file", vim.log.levels.WARN)
+      return
+    end
+    local file = api.get_file_info(rel_path)
+    if not file then
+      vim.notify("File not part of this PR", vim.log.levels.WARN)
+      return
+    end
+    local is_viewed = file.viewerViewedState == "VIEWED"
+    local toggle_fn = is_viewed and api.mark_file_unviewed or api.mark_file_viewed
+    toggle_fn(rel_path, function(ok)
+      if not ok then
+        vim.notify("Failed to toggle viewed status", vim.log.levels.ERROR)
+        return
+      end
+      local new_state = is_viewed and "unviewed" or "viewed"
+      vim.notify("File marked as " .. new_state, vim.log.levels.INFO)
+      M.update_winbar(bufnr)
+    end)
+  end, {})
+
   vim.api.nvim_create_user_command("GhPrClear", function()
     display.visible = false
     display.clear_all_visible()
@@ -226,6 +300,9 @@ function M.setup(opts)
     diff.invalidate()
     api.invalidate()
     api.discard_pending()
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      M.clear_winbar(vim.api.nvim_win_get_buf(win))
+    end
     vim.notify("PR comments cleared", vim.log.levels.INFO)
   end, {})
 
@@ -258,6 +335,9 @@ function M.setup(opts)
     map("n", "<leader>gd", "<cmd>GhPrDiscardReview<cr>", vim.tbl_extend("force", o, { desc = "Discard pending review" }))
     map("n", "<leader>gp", "<cmd>GhPrPending<cr>", vim.tbl_extend("force", o, { desc = "Pending comment count" }))
 
+    -- File viewed
+    map("n", "<leader>gw", "<cmd>GhPrToggleViewed<cr>", vim.tbl_extend("force", o, { desc = "Toggle file viewed" }))
+
     -- Merge
     map("n", "<leader>gm", "<cmd>GhPrMerge<cr>", vim.tbl_extend("force", o, { desc = "Merge PR" }))
   end
@@ -276,6 +356,7 @@ function M.setup(opts)
     callback = function(ev)
       display.render_pending(ev.buf)
       if display.is_visible() then
+        M.update_winbar(ev.buf)
         diff.fetch_and_render(ev.buf, function()
           display.render(ev.buf)
         end)

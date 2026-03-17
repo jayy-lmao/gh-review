@@ -402,6 +402,14 @@ function M.buf_relative_path(bufnr)
   return nil
 end
 
+function M.get_file_info(rel_path)
+  if not rel_path then return nil end
+  for _, file in ipairs(M.state.changed_files) do
+    if file.path == rel_path then return file end
+  end
+  return nil
+end
+
 function M.invalidate()
   M.state.pr_number = nil
   M.state.pr_id = nil
