@@ -169,7 +169,7 @@ function M.list_comments(opts)
             local filepath = r .. "/" .. thread.path
             if vim.fn.filereadable(filepath) == 1 then
               vim.cmd("edit " .. vim.fn.fnameescape(filepath))
-              if thread.line then
+              if type(thread.line) == "number" then
                 vim.api.nvim_win_set_cursor(0, { thread.line, 0 })
               end
               require("gh-review.ui").show_thread(thread)

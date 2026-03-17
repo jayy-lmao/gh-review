@@ -227,6 +227,12 @@ function M._fetch_threads_graphql(owner, repo, pr, callback)
       M.state.changed_files = pr_data.files and pr_data.files.nodes or {}
       M.state.threads = pr_data.reviewThreads.nodes or {}
 
+      -- Sanitize vim.NIL → nil for fields that can be JSON null
+      for _, thread in ipairs(M.state.threads) do
+        if type(thread.line) ~= "number" then thread.line = nil end
+        if type(thread.startLine) ~= "number" then thread.startLine = nil end
+      end
+
       M.state.threads_by_file = {}
       for _, thread in ipairs(M.state.threads) do
         if thread.path then
