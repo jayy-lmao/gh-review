@@ -63,22 +63,31 @@ local viewed_ns = vim.api.nvim_create_namespace("gh_pr_viewed")
 
 function M.update_viewed_indicator(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  local api = require("gh-review.api")
+  if not vim.api.nvim_buf_is_valid(bufnr) then return end
+  local api_mod = require("gh-review.api")
   vim.api.nvim_buf_clear_namespace(bufnr, viewed_ns, 0, -1)
 
-  local rel_path = api.buf_relative_path(bufnr)
+  local rel_path = api_mod.buf_relative_path(bufnr)
   if not rel_path then return end
-  local file = api.get_file_info(rel_path)
+  local file = api_mod.get_file_info(rel_path)
   if not file then return end
 
   local viewed = file.viewerViewedState == "VIEWED"
-  local icon = viewed and " ✓ Viewed" or " ○ Unviewed"
+  local icon = viewed and "✓ Viewed" or "○ Unviewed"
   local hl = viewed and "GhPrApproved" or "GhPrReviewWait"
+  local additions = file.additions or 0
+  local deletions = file.deletions or 0
 
-  pcall(vim.api.nvim_buf_set_extmark, bufnr, viewed_ns, 0, 0, {
-    virt_text = { { icon, hl } },
-    virt_text_pos = "right_align",
-    priority = 200,
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if line_count == 0 then return end
+
+  vim.api.nvim_buf_set_extmark(bufnr, viewed_ns, 0, 0, {
+    virt_lines_above = true,
+    virt_lines = { {
+      { string.format(" %s  ", icon), hl },
+      { string.format("+%d -%d  ", additions, deletions), "GhPrNumber" },
+      { rel_path, "GhPrAuthor" },
+    } },
   })
 end
 

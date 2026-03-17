@@ -74,6 +74,7 @@ end
 
 function M.render(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
+  if not vim.api.nvim_buf_is_valid(bufnr) then return end
 
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 
