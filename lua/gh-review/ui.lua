@@ -230,7 +230,7 @@ function M.reply_to_thread(thread)
   local first_comment_db_id = comments[1].databaseId
 
   local buf, win = create_float({
-    title = string.format(" Reply to @%s on %s:%d ",
+    title = string.format(" Reply to @%s on %s:%d | <C-s> send | q cancel ",
       comments[1].author and comments[1].author.login or "?",
       thread.path, thread.line or 0),
     height = 10,
@@ -262,6 +262,7 @@ function M.reply_to_thread(thread)
   vim.keymap.set("n", "q", function()
     vim.api.nvim_win_close(win, true)
   end, { buffer = buf, nowait = true })
+  vim.keymap.set("n", "<CR>", submit, { buffer = buf })
   vim.keymap.set("n", "<C-s>", submit, { buffer = buf })
   vim.keymap.set("i", "<C-s>", function()
     vim.cmd("stopinsert")
@@ -291,7 +292,7 @@ function M.add_comment(line1, line2)
     or string.format("%s:%d-%d", rel_path, start_line, end_line)
 
   local buf, win = create_float({
-    title = string.format(" New comment on %s ", range_str),
+    title = string.format(" New comment on %s | <C-s> save | q cancel ", range_str),
     height = 10,
   })
 
@@ -316,6 +317,7 @@ function M.add_comment(line1, line2)
   vim.keymap.set("n", "q", function()
     vim.api.nvim_win_close(win, true)
   end, { buffer = buf, nowait = true })
+  vim.keymap.set("n", "<CR>", submit, { buffer = buf })
   vim.keymap.set("n", "<C-s>", submit, { buffer = buf })
   vim.keymap.set("i", "<C-s>", function()
     vim.cmd("stopinsert")
@@ -341,7 +343,7 @@ function M.submit_review(event_arg)
 
   local function do_submit(event, label)
     local buf, win = create_float({
-      title = string.format(" %s — %d comment(s) ", label, count),
+      title = string.format(" %s — %d comment(s) | <C-s> submit | q cancel ", label, count),
       height = 8,
     })
 
@@ -374,11 +376,14 @@ function M.submit_review(event_arg)
     vim.keymap.set("n", "q", function()
       vim.api.nvim_win_close(win, true)
     end, { buffer = buf, nowait = true })
+    vim.keymap.set("n", "<CR>", submit, { buffer = buf })
     vim.keymap.set("n", "<C-s>", submit, { buffer = buf })
     vim.keymap.set("i", "<C-s>", function()
       vim.cmd("stopinsert")
       submit()
     end, { buffer = buf })
+
+    vim.cmd("startinsert")
   end
 
   if event_arg then
