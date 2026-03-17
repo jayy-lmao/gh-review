@@ -1,6 +1,68 @@
 local M = {}
 
-function M.setup()
+local function check_deps()
+  local ok, _ = pcall(require, "telescope")
+  if not ok then
+    vim.notify("gh-review.nvim requires telescope.nvim", vim.log.levels.ERROR)
+    return false
+  end
+  if vim.fn.executable("gh") ~= 1 then
+    vim.notify("gh-review.nvim requires the gh CLI (https://cli.github.com/)", vim.log.levels.ERROR)
+    return false
+  end
+  return true
+end
+
+local function check_gh_auth()
+  vim.fn.jobstart({ "gh", "auth", "status" }, {
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_exit = function(_, exit_code)
+      if exit_code ~= 0 then
+        vim.schedule(function()
+          vim.notify("gh-review.nvim: gh CLI is not authenticated. Run `gh auth login`.", vim.log.levels.WARN)
+        end)
+      end
+    end,
+  })
+end
+
+local function setup_highlights(cfg)
+  local hl = cfg.highlights
+  vim.api.nvim_set_hl(0, "GhPrOpen", vim.tbl_extend("force", hl.open, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrDraft", vim.tbl_extend("force", hl.draft, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCiPass", vim.tbl_extend("force", hl.ci_pass, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCiFail", vim.tbl_extend("force", hl.ci_fail, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCiPending", vim.tbl_extend("force", hl.ci_pending, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCiNone", vim.tbl_extend("force", hl.ci_none, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrApproved", vim.tbl_extend("force", hl.approved, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrChangesRequested", vim.tbl_extend("force", hl.changes_requested, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrReviewWait", vim.tbl_extend("force", hl.review_wait, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrNumber", vim.tbl_extend("force", hl.number, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrAuthor", vim.tbl_extend("force", hl.author, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrTime", vim.tbl_extend("force", hl.time, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentVirtText", vim.tbl_extend("force", hl.comment, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentResolved", vim.tbl_extend("force", hl.comment_resolved, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentSign", vim.tbl_extend("force", hl.comment_sign, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentSignResolved", vim.tbl_extend("force", hl.comment_sign_resolved, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentLine", vim.tbl_extend("force", hl.comment_line, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrCommentLineResolved", vim.tbl_extend("force", hl.comment_line_resolved, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrDiffAdd", vim.tbl_extend("force", hl.diff_add, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrDiffAddSign", vim.tbl_extend("force", hl.diff_add_sign, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrDiffDelete", vim.tbl_extend("force", hl.diff_delete, { default = true }))
+  vim.api.nvim_set_hl(0, "GhPrDiffDeleteSign", vim.tbl_extend("force", hl.diff_delete_sign, { default = true }))
+end
+
+function M.setup(opts)
+  if not check_deps() then return end
+
+  local config = require("gh-review.config")
+  config.setup(opts)
+  local cfg = config.get()
+
+  setup_highlights(cfg)
+  check_gh_auth()
+
   local api = require("gh-review.api")
   local display = require("gh-review.display")
   local diff = require("gh-review.diff")
